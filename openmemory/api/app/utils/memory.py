@@ -135,14 +135,27 @@ def reset_memory_client():
 
 def get_default_memory_config():
     """Get default memory client configuration with sensible defaults."""
-    # Detect vector store based on environment variables
+    import logging as _log
+    _logger = _log.getLogger("mem0-server.config")
+
+    # Detect vector store based on environment variables.
+    # pgvector is checked FIRST because Railway deployments set PG_HOST/PG_PORT
+    # for a dedicated pgvector database — falling through to in-memory Qdrant
+    # causes total data loss on every container restart.
     vector_store_config = {
         "collection_name": "openmemory",
-        "host": "mem0_store",
     }
-    
-    # Check for different vector store configurations based on environment variables
-    if os.environ.get('CHROMA_HOST') and os.environ.get('CHROMA_PORT'):
+
+    if os.environ.get('PG_HOST') and os.environ.get('PG_PORT'):
+        vector_store_provider = "pgvector"
+        vector_store_config.update({
+            "host": os.environ.get('PG_HOST'),
+            "port": int(os.environ.get('PG_PORT')),
+            "dbname": os.environ.get('PG_DB', 'mem0'),
+            "user": os.environ.get('PG_USER', 'mem0'),
+            "password": os.environ.get('PG_PASSWORD', 'mem0')
+        })
+    elif os.environ.get('CHROMA_HOST') and os.environ.get('CHROMA_PORT'):
         vector_store_provider = "chroma"
         vector_store_config.update({
             "host": os.environ.get('CHROMA_HOST'),
@@ -156,7 +169,6 @@ def get_default_memory_config():
         })
     elif os.environ.get('WEAVIATE_CLUSTER_URL') or (os.environ.get('WEAVIATE_HOST') and os.environ.get('WEAVIATE_PORT')):
         vector_store_provider = "weaviate"
-        # Prefer an explicit cluster URL if provided; otherwise build from host/port
         cluster_url = os.environ.get('WEAVIATE_CLUSTER_URL')
         if not cluster_url:
             weaviate_host = os.environ.get('WEAVIATE_HOST')
@@ -172,38 +184,24 @@ def get_default_memory_config():
             "collection_name": "openmemory",
             "redis_url": os.environ.get('REDIS_URL')
         }
-    elif os.environ.get('PG_HOST') and os.environ.get('PG_PORT'):
-        vector_store_provider = "pgvector"
-        vector_store_config.update({
-            "host": os.environ.get('PG_HOST'),
-            "port": int(os.environ.get('PG_PORT')),
-            "dbname": os.environ.get('PG_DB', 'mem0'),
-            "user": os.environ.get('PG_USER', 'mem0'),
-            "password": os.environ.get('PG_PASSWORD', 'mem0')
-        })
     elif os.environ.get('MILVUS_HOST') and os.environ.get('MILVUS_PORT'):
         vector_store_provider = "milvus"
-        # Construct the full URL as expected by MilvusDBConfig
         milvus_host = os.environ.get('MILVUS_HOST')
         milvus_port = int(os.environ.get('MILVUS_PORT'))
         milvus_url = f"http://{milvus_host}:{milvus_port}"
-        
         vector_store_config = {
             "collection_name": "openmemory",
             "url": milvus_url,
-            "token": os.environ.get('MILVUS_TOKEN', ''),  # Always include, empty string for local setup
+            "token": os.environ.get('MILVUS_TOKEN', ''),
             "db_name": os.environ.get('MILVUS_DB_NAME', ''),
             "embedding_model_dims": 1536,
-            "metric_type": "COSINE"  # Using COSINE for better semantic similarity
+            "metric_type": "COSINE"
         }
     elif os.environ.get('ELASTICSEARCH_HOST') and os.environ.get('ELASTICSEARCH_PORT'):
         vector_store_provider = "elasticsearch"
-        # Construct the full URL with scheme since Elasticsearch client expects it
         elasticsearch_host = os.environ.get('ELASTICSEARCH_HOST')
         elasticsearch_port = int(os.environ.get('ELASTICSEARCH_PORT'))
-        # Use http:// scheme since we're not using SSL
         full_host = f"http://{elasticsearch_host}"
-        
         vector_store_config.update({
             "host": full_host,
             "port": elasticsearch_port,
@@ -228,13 +226,14 @@ def get_default_memory_config():
             "distance_strategy": "cosine"
         }
     else:
-        # Default fallback to Qdrant
         vector_store_provider = "qdrant"
         vector_store_config.update({
+            "host": "mem0_store",
             "port": 6333,
         })
-    
-    print(f"Auto-detected vector store: {vector_store_provider} with config: {vector_store_config}")
+
+    _logger.info("Auto-detected vector store: %s with config: %s", vector_store_provider,
+                 {k: v for k, v in vector_store_config.items() if k != "password"})
     
     return {
         "vector_store": {

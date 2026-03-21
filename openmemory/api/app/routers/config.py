@@ -54,7 +54,13 @@ class ConfigSchema(BaseModel):
     mem0: Optional[Mem0Config] = None
 
 def get_default_configuration():
-    """Get the default configuration with sensible defaults for LLM and embedder."""
+    """Get the default configuration with sensible defaults for LLM and embedder.
+
+    NOTE: vector_store is intentionally omitted so that the env-var-based
+    auto-detection in ``get_default_memory_config()`` is not overridden
+    by a ``None`` stored in the database.  Only include vector_store here
+    if you want to *force* a specific provider via the DB config.
+    """
     return {
         "openmemory": {
             "custom_instructions": None
@@ -76,7 +82,6 @@ def get_default_configuration():
                     "api_key": "env:OPENAI_API_KEY"
                 }
             },
-            "vector_store": None,
             "reranker": None,
             "custom_fact_extraction_prompt": None,
             "custom_update_memory_prompt": None,

@@ -6,14 +6,25 @@
                 "model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "max_tokens": 2000,
-                "api_key": "env:API_KEY"
+                "api_key": "env:OPENAI_API_KEY"
             }
         },
         "embedder": {
             "provider": "openai",
             "config": {
                 "model": "text-embedding-3-small",
-                "api_key": "env:API_KEY"
+                "api_key": "env:OPENAI_API_KEY"
+            }
+        },
+        "vector_store": {
+            "provider": "pgvector",
+            "config": {
+                "collection_name": "openmemory",
+                "host": "env:PG_HOST",
+                "port": 5432,
+                "dbname": "env:PG_DB",
+                "user": "env:PG_USER",
+                "password": "env:PG_PASSWORD"
             }
         }
     }
